@@ -851,7 +851,7 @@ where
 {
     /// Writes to many registers. Does not check whether all registers
     /// can be written to
-    unsafe fn write_multiple_regs(
+    fn write_multiple_regs(
         &mut self,
         start_register: Register,
         data: &[u8],
@@ -893,7 +893,7 @@ where
         if register.read_only() {
             return Err(Error::WriteToReadOnly);
         }
-        unsafe { self.write_multiple_regs(register, &[value]) }
+        self.write_multiple_regs(register, &[value])
     }
 
     /// Read a byte from the given register.
