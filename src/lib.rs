@@ -39,10 +39,9 @@ pub use register::{
 /// Accelerometer errors, generic around another error type `E` representing
 /// an (optional) cause of this error.
 #[derive(Debug)]
-pub enum Error<BusError, PinError> {
-    /// I²C bus error
+pub enum Error<BusError> {
+    /// I²C or SPI bus error
     Bus(BusError),
-    Pin(PinError),
 
     /// Invalid data rate selection
     InvalidDataRate,
@@ -92,10 +91,7 @@ where
     ///     );
     ///     
     ///     let lis3dh = Lis3dh::new_i2c(i2c, lis3dh::SlaveAddr::Default).unwrap();
-    pub fn new_i2c(
-        i2c: I2C,
-        address: SlaveAddr,
-    ) -> Result<Self, Error<E, core::convert::Infallible>> {
+    pub fn new_i2c(i2c: I2C, address: SlaveAddr) -> Result<Self, Error<E>> {
         Self::new_i2c_with_config(i2c, address, Configuration::default())
     }
 
@@ -103,7 +99,7 @@ where
         i2c: I2C,
         address: SlaveAddr,
         config: Configuration,
-    ) -> Result<Self, Error<E, core::convert::Infallible>> {
+    ) -> Result<Self, Error<E>> {
         let core = Lis3dhI2C {
             i2c,
             address: address.addr(),
@@ -152,14 +148,11 @@ where
     ///
     ///     // create and initialize the sensor
     ///     let lis3dh = Lis3dh::new_spi(spi, cs).unwrap();
-    pub fn new_spi(spi: SPI) -> Result<Self, Error<ESPI, core::convert::Infallible>> {
+    pub fn new_spi(spi: SPI) -> Result<Self, Error<ESPI>> {
         Self::new_spi_with_config(spi, Configuration::default())
     }
 
-    pub fn new_spi_with_config(
-        spi: SPI,
-        config: Configuration,
-    ) -> Result<Self, Error<ESPI, core::convert::Infallible>> {
+    pub fn new_spi_with_config(spi: SPI, config: Configuration) -> Result<Self, Error<ESPI>> {
         let core = Lis3dhSPI { spi };
 
         let mut lis3dh = Lis3dh { core };
@@ -175,10 +168,7 @@ where
     CORE: Lis3dhCore,
 {
     /// Configure the device
-    pub fn configure(
-        &mut self,
-        conf: Configuration,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn configure(&mut self, conf: Configuration) -> Result<(), Error<CORE::BusError>> {
         if self.get_device_id()? != DEVICE_ID {
             return Err(Error::WrongAddress);
         }
@@ -203,16 +193,13 @@ where
     }
 
     /// `WHO_AM_I` register.
-    pub fn get_device_id(&mut self) -> Result<u8, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_device_id(&mut self) -> Result<u8, Error<CORE::BusError>> {
         self.read_register(Register::WHOAMI)
     }
 
     /// X,Y,Z-axis enable.
     /// `CTRL_REG1`: `Xen`, `Yen`, `Zen`
-    fn enable_axis(
-        &mut self,
-        (x, y, z): (bool, bool, bool),
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    fn enable_axis(&mut self, (x, y, z): (bool, bool, bool)) -> Result<(), Error<CORE::BusError>> {
         self.modify_register(Register::CTRL1, |mut ctrl1| {
             ctrl1 &= !(X_EN | Y_EN | Z_EN); // disable all axes
 
@@ -238,7 +225,7 @@ where
     /// | Normal         | HighResolution | 7/datarate |
     /// | LowPower       | Normal         | 1/datarate |
     /// | LowPower       | HighResolution | 7/datarate |
-    pub fn set_mode(&mut self, mode: Mode) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn set_mode(&mut self, mode: Mode) -> Result<(), Error<CORE::BusError>> {
         match mode {
             Mode::LowPower => {
                 self.register_set_bits(Register::CTRL1, LP_EN)?;
@@ -258,7 +245,7 @@ where
     }
 
     /// Read the current operating mode.
-    pub fn get_mode(&mut self) -> Result<Mode, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_mode(&mut self) -> Result<Mode, Error<CORE::BusError>> {
         let ctrl1 = self.read_register(Register::CTRL1)?;
         let ctrl4 = self.read_register(Register::CTRL4)?;
 
@@ -276,10 +263,7 @@ where
     }
 
     /// Data rate selection.
-    pub fn set_datarate(
-        &mut self,
-        datarate: DataRate,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn set_datarate(&mut self, datarate: DataRate) -> Result<(), Error<CORE::BusError>> {
         self.modify_register(Register::CTRL1, |mut ctrl1| {
             // Mask off lowest 4 bits
             ctrl1 &= !ODR_MASK;
@@ -291,7 +275,7 @@ where
     }
 
     /// Read the current data selection rate.
-    pub fn get_datarate(&mut self) -> Result<DataRate, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_datarate(&mut self) -> Result<DataRate, Error<CORE::BusError>> {
         let ctrl1 = self.read_register(Register::CTRL1)?;
         let odr = (ctrl1 >> 4) & 0x0F;
 
@@ -299,7 +283,7 @@ where
     }
 
     /// Full-scale selection.
-    pub fn set_range(&mut self, range: Range) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn set_range(&mut self, range: Range) -> Result<(), Error<CORE::BusError>> {
         self.modify_register(Register::CTRL4, |mut ctrl4| {
             // Mask off lowest 4 bits
             ctrl4 &= !FS_MASK;
@@ -311,7 +295,7 @@ where
     }
 
     /// Read the current full-scale.
-    pub fn get_range(&mut self) -> Result<Range, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_range(&mut self) -> Result<Range, Error<CORE::BusError>> {
         let ctrl4 = self.read_register(Register::CTRL4)?;
         let fs = (ctrl4 >> 4) & 0b0011;
 
@@ -319,17 +303,17 @@ where
     }
 
     /// Set `REFERENCE` register.
-    pub fn set_ref(&mut self, reference: u8) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn set_ref(&mut self, reference: u8) -> Result<(), Error<CORE::BusError>> {
         self.write_register(Register::REFERENCE, reference)
     }
 
     /// Read the `REFERENCE` register.
-    pub fn get_ref(&mut self) -> Result<u8, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_ref(&mut self) -> Result<u8, Error<CORE::BusError>> {
         self.read_register(Register::REFERENCE)
     }
 
     /// Accelerometer data-available status.
-    pub fn get_status(&mut self) -> Result<DataStatus, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_status(&mut self) -> Result<DataStatus, Error<CORE::BusError>> {
         let stat = self.read_register(Register::STATUS)?;
 
         Ok(DataStatus {
@@ -343,7 +327,7 @@ where
     /// Convenience function for `STATUS_REG` to confirm all three X, Y and
     /// Z-axis have new data available for reading by accel_raw and associated
     /// function calls.
-    pub fn is_data_ready(&mut self) -> Result<bool, Error<CORE::BusError, CORE::PinError>> {
+    pub fn is_data_ready(&mut self) -> Result<bool, Error<CORE::BusError>> {
         let value = self.get_status()?;
 
         Ok(value.zyxda)
@@ -351,10 +335,7 @@ where
 
     /// Temperature sensor enable.
     /// `TEMP_CGF_REG`: `TEMP_EN`, the BDU bit in `CTRL_REG4` is also set.
-    pub fn enable_temp(
-        &mut self,
-        enable: bool,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn enable_temp(&mut self, enable: bool) -> Result<(), Error<CORE::BusError>> {
         self.register_xset_bits(Register::TEMP_CFG, ADC_EN & TEMP_EN, enable)?;
 
         // enable block data update (required for temp reading)
@@ -367,7 +348,7 @@ where
 
     /// Raw temperature sensor data as `i16`. The temperature sensor __must__
     /// be enabled via `enable_temp` prior to reading.
-    pub fn get_temp_out(&mut self) -> Result<i16, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_temp_out(&mut self) -> Result<i16, Error<CORE::BusError>> {
         let out_l = self.read_register(Register::OUT_ADC3_L)?;
         let out_h = self.read_register(Register::OUT_ADC3_H)?;
 
@@ -377,7 +358,7 @@ where
     /// Temperature sensor data converted to `f32`. Output is in degree
     /// celsius. The temperature sensor __must__ be enabled via `enable_temp`
     /// prior to reading.
-    pub fn get_temp_outf(&mut self) -> Result<f32, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_temp_outf(&mut self) -> Result<f32, Error<CORE::BusError>> {
         let temp_out = self.get_temp_out()?;
 
         Ok(temp_out as f32 / 256.0 + 25.0)
@@ -395,7 +376,7 @@ where
         &mut self,
         lir_click: bool,
         threshold: u8,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         let value = if lir_click {
             LIR_CLICK | threshold
         } else {
@@ -408,10 +389,7 @@ where
     ///
     /// time_limit: The time interval between the start and end of a click
     /// event, from 0-255, in increments of (1/ODR) e.g 2.5ms at 400Hz.
-    pub fn set_click_time_limit(
-        &mut self,
-        time_limit: u8,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn set_click_time_limit(&mut self, time_limit: u8) -> Result<(), Error<CORE::BusError>> {
         self.write_register(Register::TIME_LIMIT, time_limit)
     }
 
@@ -419,12 +397,12 @@ where
     pub fn enable_xyz_click_detection(
         &mut self,
         count: ClickCount,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.write_register(Register::CLICK_CFG, count as u8)
     }
 
     /// Click detection source.
-    fn get_click_src(&mut self) -> Result<ClickSrc, Error<CORE::BusError, CORE::PinError>> {
+    fn get_click_src(&mut self) -> Result<ClickSrc, Error<CORE::BusError>> {
         let click_src = self.read_register(Register::CLICK_SRC)?;
 
         Ok(ClickSrc {
@@ -439,7 +417,7 @@ where
     }
 
     /// Report number of clicks detected.
-    pub fn click_count(&mut self) -> Result<usize, Error<CORE::BusError, CORE::PinError>> {
+    pub fn click_count(&mut self) -> Result<usize, Error<CORE::BusError>> {
         let click_src = self.get_click_src()?;
 
         if click_src.sclick {
@@ -454,11 +432,7 @@ where
     /// Modify a register's value. Read the current value of the register,
     /// update the value with the provided function, and set the register to
     /// the return value.
-    fn modify_register<F>(
-        &mut self,
-        register: Register,
-        f: F,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>>
+    fn modify_register<F>(&mut self, register: Register, f: F) -> Result<(), Error<CORE::BusError>>
     where
         F: FnOnce(u8) -> u8,
     {
@@ -476,7 +450,7 @@ where
         &mut self,
         reg: Register,
         bits: u8,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.modify_register(reg, |v| v & !bits)
     }
 
@@ -489,7 +463,7 @@ where
         &mut self,
         reg: Register,
         bits: u8,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.modify_register(reg, |v| v | bits)
     }
 
@@ -500,7 +474,7 @@ where
         reg: Register,
         bits: u8,
         set: bool,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         if set {
             self.register_set_bits(reg, bits)
         } else {
@@ -519,7 +493,7 @@ where
     pub fn configure_interrupt_pin<P: IrqPin>(
         &mut self,
         pin: P,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.write_register(P::ctrl_reg(), pin.bits())
     }
 
@@ -537,7 +511,7 @@ where
         int: I,
         interrupt_mode: InterruptMode,
         interrupt_config: InterruptConfig,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.configure_irq_src_and_control(
             int,
             interrupt_mode,
@@ -570,7 +544,7 @@ where
         interrupt_config: InterruptConfig,
         latch_interrupt_request: LatchInterruptRequest,
         detect_4d: Detect4D,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         let latch_interrupt_request =
             matches!(latch_interrupt_request, LatchInterruptRequest::Enable);
 
@@ -597,7 +571,7 @@ where
         &mut self,
         _int: I,
         duration: Duration,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.write_register(I::duration_reg(), duration.0)
     }
 
@@ -614,7 +588,7 @@ where
         &mut self,
         _int: I,
         threshold: Threshold,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.write_register(I::ths_reg(), threshold.0)
     }
 
@@ -623,7 +597,7 @@ where
     pub fn get_irq_src<I: Interrupt>(
         &mut self,
         _int: I,
-    ) -> Result<InterruptSource, Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<InterruptSource, Error<CORE::BusError>> {
         let irq_src = self.read_register(I::src_reg())?;
         Ok(InterruptSource::from_bits(irq_src))
     }
@@ -654,13 +628,13 @@ where
         &mut self,
         threshold: Threshold,
         duration: Duration,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         self.write_register(Register::ACT_THS, threshold.0 & 0b0111_1111)?;
         self.write_register(Register::ACT_DUR, duration.0)
     }
 
     /// Reboot memory content
-    pub fn reboot_memory_content(&mut self) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn reboot_memory_content(&mut self) -> Result<(), Error<CORE::BusError>> {
         self.register_set_bits(Register::CTRL5, 0b1000_0000)
     }
 
@@ -671,7 +645,7 @@ where
         &mut self,
         mode: FifoMode,
         threshold: u8,
-    ) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    ) -> Result<(), Error<CORE::BusError>> {
         debug_assert!(threshold <= 0b0001_1111);
 
         let bits = (threshold & 0b0001_1111) | mode.to_bits();
@@ -680,13 +654,13 @@ where
     }
 
     /// Disable FIFO. This resets the FIFO state
-    pub fn disable_fifo(&mut self) -> Result<(), Error<CORE::BusError, CORE::PinError>> {
+    pub fn disable_fifo(&mut self) -> Result<(), Error<CORE::BusError>> {
         self.write_register(Register::FIFO_CTRL, 0x00)?;
         self.register_clear_bits(Register::CTRL5, Self::FIFO_ENABLE_BIT)
     }
 
     /// Get the status of the FIFO
-    pub fn get_fifo_status(&mut self) -> Result<FifoStatus, Error<CORE::BusError, CORE::PinError>> {
+    pub fn get_fifo_status(&mut self) -> Result<FifoStatus, Error<CORE::BusError>> {
         let status = self.read_register(Register::FIFO_SRC)?;
 
         Ok(FifoStatus::from_bits(status))
@@ -696,10 +670,9 @@ where
 impl<CORE> Accelerometer for Lis3dh<CORE>
 where
     CORE: Lis3dhCore,
-    CORE::PinError: Debug,
     CORE::BusError: Debug,
 {
-    type Error = Error<CORE::BusError, CORE::PinError>;
+    type Error = Error<CORE::BusError>;
 
     /// Get normalized ±g reading from the accelerometer. You should be reading
     /// based on data ready interrupt or if reading in a tight loop you should
@@ -760,10 +733,9 @@ where
 impl<CORE> RawAccelerometer<I16x3> for Lis3dh<CORE>
 where
     CORE: Lis3dhCore,
-    CORE::PinError: Debug,
     CORE::BusError: Debug,
 {
-    type Error = Error<CORE::BusError, CORE::PinError>;
+    type Error = Error<CORE::BusError>;
 
     /// Get raw acceleration data from the accelerometer. You should be reading
     /// based on data ready interrupt or if reading in a tight loop you should
@@ -781,20 +753,16 @@ where
 
 pub trait Lis3dhCore {
     type BusError;
-    type PinError;
 
     fn write_register(
         &mut self,
         register: Register,
         value: u8,
-    ) -> Result<(), Error<Self::BusError, Self::PinError>>;
+    ) -> Result<(), Error<Self::BusError>>;
 
-    fn read_register(
-        &mut self,
-        register: Register,
-    ) -> Result<u8, Error<Self::BusError, Self::PinError>>;
+    fn read_register(&mut self, register: Register) -> Result<u8, Error<Self::BusError>>;
 
-    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError, Self::PinError>>;
+    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError>>;
 }
 
 impl<CORE> Lis3dhCore for Lis3dh<CORE>
@@ -802,24 +770,20 @@ where
     CORE: Lis3dhCore,
 {
     type BusError = CORE::BusError;
-    type PinError = CORE::PinError;
 
     fn write_register(
         &mut self,
         register: Register,
         value: u8,
-    ) -> Result<(), Error<Self::BusError, Self::PinError>> {
+    ) -> Result<(), Error<Self::BusError>> {
         self.core.write_register(register, value)
     }
 
-    fn read_register(
-        &mut self,
-        register: Register,
-    ) -> Result<u8, Error<Self::BusError, Self::PinError>> {
+    fn read_register(&mut self, register: Register) -> Result<u8, Error<Self::BusError>> {
         self.core.read_register(register)
     }
 
-    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError, Self::PinError>> {
+    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError>> {
         self.core.read_accel_bytes()
     }
 }
@@ -838,10 +802,9 @@ where
     I2C: I2c<Error = E>,
 {
     type BusError = E;
-    type PinError = core::convert::Infallible;
 
     /// Read from the registers for each of the 3 axes.
-    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError, Self::PinError>> {
+    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<Self::BusError>> {
         let mut data = [0u8; 6];
 
         self.i2c
@@ -855,7 +818,7 @@ where
         &mut self,
         register: Register,
         value: u8,
-    ) -> Result<(), Error<Self::BusError, Self::PinError>> {
+    ) -> Result<(), Error<Self::BusError>> {
         if register.read_only() {
             return Err(Error::WriteToReadOnly);
         }
@@ -866,10 +829,7 @@ where
     }
 
     /// Read a byte from the given register.
-    fn read_register(
-        &mut self,
-        register: Register,
-    ) -> Result<u8, Error<Self::BusError, Self::PinError>> {
+    fn read_register(&mut self, register: Register) -> Result<u8, Error<Self::BusError>> {
         let mut data = [0];
 
         self.i2c
@@ -895,7 +855,7 @@ where
         &mut self,
         start_register: Register,
         data: &[u8],
-    ) -> Result<(), Error<ESPI, core::convert::Infallible>> {
+    ) -> Result<(), Error<ESPI>> {
         self.spi
             .write(&[start_register.addr() | 0x40])
             .and_then(|_| self.spi.write(data))
@@ -907,7 +867,7 @@ where
         &mut self,
         start_register: Register,
         buf: &mut [u8],
-    ) -> Result<(), Error<ESPI, core::convert::Infallible>> {
+    ) -> Result<(), Error<ESPI>> {
         self.spi
             .write(&[start_register.addr() | 0xC0])
             .and_then(|_| self.spi.read(buf))
@@ -920,21 +880,16 @@ where
     SPI: SpiDevice<u8, Error = ESPI>,
 {
     type BusError = ESPI;
-    type PinError = core::convert::Infallible;
 
     /// Read from the registers for each of the 3 axes.
-    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<ESPI, core::convert::Infallible>> {
+    fn read_accel_bytes(&mut self) -> Result<[u8; 6], Error<ESPI>> {
         let mut data = [0u8; 6];
         self.read_multiple_regs(Register::OUT_X_L, &mut data)?;
         Ok(data)
     }
 
     /// Write a byte to the given register.
-    fn write_register(
-        &mut self,
-        register: Register,
-        value: u8,
-    ) -> Result<(), Error<ESPI, core::convert::Infallible>> {
+    fn write_register(&mut self, register: Register, value: u8) -> Result<(), Error<ESPI>> {
         if register.read_only() {
             return Err(Error::WriteToReadOnly);
         }
@@ -942,10 +897,7 @@ where
     }
 
     /// Read a byte from the given register.
-    fn read_register(
-        &mut self,
-        register: Register,
-    ) -> Result<u8, Error<ESPI, core::convert::Infallible>> {
+    fn read_register(&mut self, register: Register) -> Result<u8, Error<ESPI>> {
         let mut data = [0];
 
         self.spi
